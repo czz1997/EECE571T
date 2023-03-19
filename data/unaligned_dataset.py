@@ -24,18 +24,27 @@ class UnalignedDataset(BaseDataset):
             opt (Option class) -- stores all the experiment flags; needs to be a subclass of BaseOptions
         """
         BaseDataset.__init__(self, opt)
-        self.dir_A = os.path.join(opt.dataroot, opt.phase + 'A')  # create a path '/path/to/data/trainA'
-        self.dir_B = os.path.join(opt.dataroot, opt.phase + 'B')  # create a path '/path/to/data/trainB'
+        self.phase = opt.phase
+        self.dir_A = os.path.join(opt.dataroot, self.phase + 'A')  # create a path '/path/to/data/trainA'
+        self.dir_B = os.path.join(opt.dataroot, self.phase + 'B')  # create a path '/path/to/data/trainB'
 
-        if opt.phase == "test" and not os.path.exists(self.dir_A) \
-           and os.path.exists(os.path.join(opt.dataroot, "valA")):
-            self.dir_A = os.path.join(opt.dataroot, "valA")
-            self.dir_B = os.path.join(opt.dataroot, "valB")
+        self.scenes = sorted([scene for scene in os.listdir(self.dir_A)
+                              if os.path.isdir(os.path.join(self.dir_A, scene))])
 
-        self.A_paths = sorted(make_dataset(self.dir_A, opt.max_dataset_size))   # load images from '/path/to/data/trainA'
-        self.B_paths = sorted(make_dataset(self.dir_B, opt.max_dataset_size))    # load images from '/path/to/data/trainB'
-        self.A_size = len(self.A_paths)  # get the size of dataset A
-        self.B_size = len(self.B_paths)  # get the size of dataset B
+        if self.phase == 'train':
+            self.A_paths = sorted([os.listdir(os.path.join(self.dir_A, scene)) for scene in self.scenes]
+                                  [:min(opt.max_dataset_size, len(self.scenes))])
+            self.B_paths = sorted([os.listdir(os.path.join(self.dir_B, scene)) for scene in self.scenes]
+                                  [:min(opt.max_dataset_size, len(self.scenes))])
+            self.size = len(self.scenes)  # size of dataset is number of scenes in training
+        else:
+            self.A_paths, self.B_paths = [], []
+            for scene in self.scenes:
+                for f in os.listdir(os.path.join(self.dir_A, scene)):
+                    self.A_paths.append(os.path.join(self.dir_A, scene, f))
+                for f in os.listdir(os.path.join(self.dir_B, scene)):
+                    self.B_paths.append(os.path.join(self.dir_B, scene, f))
+            self.size = len(self.A_paths)  # size of dataset is #images in A in val and test
 
     def __getitem__(self, index):
         """Return a data point and its metadata information.
@@ -46,17 +55,33 @@ class UnalignedDataset(BaseDataset):
         Returns a dictionary that contains A, B, A_paths and B_paths
             A (tensor)       -- an image in the input domain
             B (tensor)       -- its corresponding image in the target domain
+            gt (tensor)      -- its groundtruth image in the target domain
             A_paths (str)    -- image paths
             B_paths (str)    -- image paths
+            gt_paths (str)   -- image paths
         """
-        A_path = self.A_paths[index % self.A_size]  # make sure index is within then range
-        if self.opt.serial_batches:   # make sure index is within then range
-            index_B = index % self.B_size
-        else:   # randomize the index for domain B to avoid fixed pairs.
-            index_B = random.randint(0, self.B_size - 1)
-        B_path = self.B_paths[index_B]
+        if self.phase == 'train':
+            A_scene_index = index
+            if self.opt.serial_batches:   # make sure index is within then range
+                B_scene_index = (self.size // 2 + index) % self.size
+            else:   # randomize the index for domain B to avoid fixed pairs.
+                B_scene_index = random.randint(0, self.size - 1)
+
+            A_image_index = random.randint(0, len(self.A_paths[index]) - 1)
+            B_image_index = 0
+
+            A_path = os.path.join(self.dir_A, self.scenes[A_scene_index], self.A_paths[A_scene_index][A_image_index])
+            B_path = os.path.join(self.dir_B, self.scenes[B_scene_index], self.B_paths[B_scene_index][B_image_index])
+            gt_path = os.path.join(self.dir_B, self.scenes[A_scene_index], self.B_paths[A_scene_index][B_image_index])
+        else:
+            A_path = self.A_paths[index]
+            B_path = A_path[:-9] + 'C-000.png'
+            gt_path = B_path
+            assert B_path in self.B_paths
+
         A_img = Image.open(A_path).convert('RGB')
-        B_img = Image.open(B_path).convert('RGB')
+        B_img = Image.open(B_path).convert('RGB') if self.phase == 'train' else None
+        gt_img = Image.open(gt_path).convert('RGB')
 
         # Apply image transformation
         # For CUT/FastCUT mode, if in finetuning phase (learning rate is decaying),
@@ -65,14 +90,12 @@ class UnalignedDataset(BaseDataset):
         modified_opt = util.copyconf(self.opt, load_size=self.opt.crop_size if is_finetuning else self.opt.load_size)
         transform = get_transform(modified_opt)
         A = transform(A_img)
-        B = transform(B_img)
+        B = transform(B_img) if self.phase == 'train' else None
+        gt = transform(gt_img)
 
-        return {'A': A, 'B': B, 'A_paths': A_path, 'B_paths': B_path}
+        return {'A': A, 'B': B, 'gt': gt, 'A_paths': A_path, 'B_paths': B_path, 'gt_paths': gt_path}
 
     def __len__(self):
         """Return the total number of images in the dataset.
-
-        As we have two datasets with potentially different number of images,
-        we take a maximum of
         """
-        return max(self.A_size, self.B_size)
+        return self.size
