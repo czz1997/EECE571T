@@ -7,9 +7,9 @@ import util.util as util
 from torchvision import transforms
 
 
-class UnalignedDataset(BaseDataset):
+class PairedDataset(BaseDataset):
     """
-    This dataset class can load unaligned/unpaired datasets.
+    This dataset class can load paired datasets.
 
     It requires two directories to host training images from domain A '/path/to/data/trainA'
     and from domain B '/path/to/data/trainB' respectively.
