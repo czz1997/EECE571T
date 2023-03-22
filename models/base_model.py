@@ -109,8 +109,15 @@ class BaseModel(ABC):
     def data_dependent_initialize(self, data):
         pass
 
+    def train(self):
+        """Make models train mode"""
+        for name in self.model_names:
+            if isinstance(name, str):
+                net = getattr(self, 'net' + name)
+                net.train()
+
     def eval(self):
-        """Make models eval mode during test time"""
+        """Make models eval mode"""
         for name in self.model_names:
             if isinstance(name, str):
                 net = getattr(self, 'net' + name)
@@ -143,14 +150,14 @@ class BaseModel(ABC):
                 scheduler.step()
 
         lr = self.optimizers[0].param_groups[0]['lr']
-        print('learning rate = %.7f' % lr)
+        # print('learning rate = %.7f' % lr)
 
     def get_current_visuals(self):
         """Return visualization images. train.py will display these images with visdom, and save the images to a HTML"""
         visual_ret = OrderedDict()
         for name in self.visual_names:
             if isinstance(name, str):
-                visual_ret[name] = getattr(self, name)
+                visual_ret[name] = getattr(self, name).detach().cpu()
         return visual_ret
 
     def get_current_losses(self):

@@ -58,12 +58,12 @@ class CUTModel(BaseModel):
 
         # specify the training losses you want to print out.
         # The training/test scripts will call <BaseModel.get_current_losses>
-        self.loss_names = ['G_GAN', 'D_real', 'D_fake', 'G', 'NCE']
-        self.visual_names = ['real_A', 'fake_B', 'real_B']
+        self.loss_names = ['G', 'G_GAN', 'G_NCE', 'D', 'D_real', 'D_fake']
+        self.visual_names = ['real_A', 'fake_B', 'real_B', 'gt']
         self.nce_layers = [int(i) for i in self.opt.nce_layers.split(',')]
 
         if opt.nce_idt and self.isTrain:
-            self.loss_names += ['NCE_Y']
+            self.loss_names += ['G_NCE_Y']
             self.visual_names += ['idt_B']
 
         if self.isTrain:
@@ -141,6 +141,7 @@ class CUTModel(BaseModel):
         AtoB = self.opt.direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
+        self.gt = input['gt'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
@@ -182,17 +183,17 @@ class CUTModel(BaseModel):
             self.loss_G_GAN = 0.0
 
         if self.opt.lambda_NCE > 0.0:
-            self.loss_NCE = self.calculate_NCE_loss(self.real_A, self.fake_B)
+            self.loss_G_NCE = self.calculate_NCE_loss(self.real_A, self.fake_B)
         else:
-            self.loss_NCE, self.loss_NCE_bd = 0.0, 0.0
+            self.loss_G_NCE, self.loss_G_NCE_bd = 0.0, 0.0
 
         if self.opt.nce_idt and self.opt.lambda_NCE > 0.0:
-            self.loss_NCE_Y = self.calculate_NCE_loss(self.real_B, self.idt_B)
-            loss_NCE_both = (self.loss_NCE + self.loss_NCE_Y) * 0.5
+            self.loss_G_NCE_Y = self.calculate_NCE_loss(self.real_B, self.idt_B)
+            loss_G_NCE_both = (self.loss_G_NCE + self.loss_G_NCE_Y) * 0.5
         else:
-            loss_NCE_both = self.loss_NCE
+            loss_G_NCE_both = self.loss_G_NCE
 
-        self.loss_G = self.loss_G_GAN + loss_NCE_both
+        self.loss_G = self.loss_G_GAN + loss_G_NCE_both
         return self.loss_G
 
     def calculate_NCE_loss(self, src, tgt):

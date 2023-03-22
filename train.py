@@ -1,21 +1,38 @@
+import copy
+import os.path
 import time
 import torch
+from util import util
 from options.train_options import TrainOptions
 from data import create_dataset
 from models import create_model
-from util.visualizer import Visualizer
+import datetime
+from torch.utils.tensorboard import SummaryWriter
 
 
 if __name__ == '__main__':
     opt = TrainOptions().parse()   # get training options
-    dataset = create_dataset(opt)  # create a dataset given opt.dataset_mode and other options
-    dataset_size = len(dataset)    # get the number of images in the dataset.
+    train_dataset = create_dataset(opt)  # create a dataset given opt.dataset_mode and other options
+    train_dataset_size = len(train_dataset)    # get the number of images in the dataset.
+
+    opt_val = copy.deepcopy(opt)
+    opt_val.isTrain = False
+    opt_val.phase = 'val'
+    opt_val.num_threads = 0  # test code only supports num_threads = 1
+    opt_val.batch_size = 8
+    opt_val.load_size = opt_val.crop_size
+    opt_val.serial_batches = True  # disable data shuffling
+    opt_val.no_flip = True  # no flip; comment this line if results on flipped images are needed.
+    val_dataset = create_dataset(opt_val)
+    val_dataset_size = len(val_dataset)
 
     model = create_model(opt)      # create a model given opt.model and other options
-    print('The number of training images = %d' % dataset_size)
+    print('The number of training images = %d' % train_dataset_size)
+    print('The number of validation images = %d' % val_dataset_size)
 
-    # visualizer = Visualizer(opt)   # create a visualizer that display/save images and plots
-    # opt.visualizer = visualizer
+    if not os.path.exists(f"runs/{opt.name}"):
+        os.makedirs(f"runs/{opt.name}")
+    summary_writer = SummaryWriter(f"runs/{opt.name}")
     total_iters = 0                # the total number of training iterations
 
     optimize_time = 0.1
@@ -25,17 +42,18 @@ if __name__ == '__main__':
         epoch_start_time = time.time()  # timer for entire epoch
         iter_data_time = time.time()    # timer for data loading per iteration
         epoch_iter = 0                  # the number of training iterations in current epoch, reset to 0 every epoch
-        # visualizer.reset()              # reset the visualizer: make sure it saves the results to HTML at least once every epoch
 
-        dataset.set_epoch(epoch)
-        for i, data in enumerate(dataset):  # inner loop within one epoch
+        lr = model.optimizers[0].param_groups[0]['lr']
+        summary_writer.add_scalar('lr', lr, global_step=epoch)
+        print('Learning rate = %.7f' % lr)
+
+        train_dataset.set_epoch(epoch)
+        for i, data in enumerate(train_dataset):  # inner loop within one epoch
             iter_start_time = time.time()  # timer for computation per iteration
             if total_iters % opt.print_freq == 0:
                 t_data = iter_start_time - iter_data_time
 
             batch_size = data["A"].size(0)
-            total_iters += batch_size
-            epoch_iter += batch_size
             if len(opt.gpu_ids) > 0:
                 torch.cuda.synchronize()
             optimize_start_time = time.time()
@@ -49,29 +67,61 @@ if __name__ == '__main__':
                 torch.cuda.synchronize()
             optimize_time = (time.time() - optimize_start_time) / batch_size * 0.005 + 0.995 * optimize_time
 
-            if total_iters % opt.display_freq == 0:   # display images on visdom and save images to a HTML file
-                save_result = total_iters % opt.update_html_freq == 0
-                model.compute_visuals()
-                # visualizer.display_current_results(model.get_current_visuals(), epoch, save_result)
+            # visualize training images
+            if total_iters % opt.display_freq == 0:
+                visuals = model.get_current_visuals()
+                image_grid = util.grid_images([visuals], train=True)
+                summary_writer.add_image('train/images', image_grid, global_step=opt.display_freq)
 
-            if total_iters % opt.print_freq == 0:    # print training losses and save logging information to the disk
-                losses = model.get_current_losses()
-                # visualizer.print_current_losses(epoch, epoch_iter, losses, optimize_time, t_data)
-                # if opt.display_id is None or opt.display_id > 0:
-                #     visualizer.plot_current_losses(epoch, float(epoch_iter) / dataset_size, losses)
-
-            if total_iters % opt.save_latest_freq == 0:   # cache our latest model every <save_latest_freq> iterations
-                print('saving the latest model (epoch %d, total_iters %d)' % (epoch, total_iters))
-                print(opt.name)  # it's useful to occasionally show the experiment name on console
-                save_suffix = 'iter_%d' % total_iters if opt.save_by_iter else 'latest'
-                model.save_networks(save_suffix)
-
+            total_iters += batch_size
+            epoch_iter += batch_size
             iter_data_time = time.time()
 
+        # loss summary
+        losses = model.get_current_losses()
+        print("Losses:", end=" ")
+        for name, loss in losses.items():
+            summary_writer.add_scalar(f'Loss/{name}', loss, global_step=epoch)
+            print(f"{name}: {loss:.2f}", end=" ")
+        print()
+
+        # epoch summary
+        epoch_time = time.time() - epoch_start_time
+        times.append(epoch_time)
+        time_elapsed = datetime.timedelta(seconds=sum(times))
+        estimated_time_left = datetime.timedelta(seconds=int((opt.n_epochs + opt.n_epochs_decay - epoch) * time_elapsed.seconds / len(times)))
+        print("Epoch %d / %d (%d%%) completed in %d sec, total iterations %d, time elapsed %s, estimated time left %s" %
+              (epoch, opt.n_epochs + opt.n_epochs_decay, epoch / (opt.n_epochs + opt.n_epochs_decay) * 100,
+               time.time() - epoch_start_time, total_iters, str(time_elapsed), str(estimated_time_left)))
+
+        # validate model
+        if epoch % 20 == 0:
+            model.eval()
+
+            print("Validating model at epoch %d..." % epoch)
+            eval_start_time = time.time()
+
+            all_visuals = []
+            for i, data in enumerate(val_dataset):
+                model.set_input(data)  # unpack data from data loader
+                model.test()  # run inference
+                visuals = model.get_current_visuals()  # get image results
+
+                if i % 20 == 0:
+                    all_visuals.append(visuals)
+
+            image_grid = util.grid_images(all_visuals)
+            summary_writer.add_image('validation/images', image_grid, global_step=epoch)
+
+            print('Validation completed in %s' % datetime.timedelta(seconds=time.time() - eval_start_time))
+
+            model.train()
+
+        # save model
         if epoch % opt.save_epoch_freq == 0:              # cache our model every <save_epoch_freq> epochs
-            print('saving the model at the end of epoch %d, iters %d' % (epoch, total_iters))
+            print('Model saved at epoch %d, iters %d' % (epoch, total_iters))
             model.save_networks('latest')
             model.save_networks(epoch)
 
-        print('End of epoch %d / %d \t Time Taken: %d sec' % (epoch, opt.n_epochs + opt.n_epochs_decay, time.time() - epoch_start_time))
-        model.update_learning_rate()                     # update learning rates at the end of every epoch.
+        model.update_learning_rate()  # update learning rates at the end of every epoch.
+        print()

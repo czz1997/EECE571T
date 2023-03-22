@@ -164,3 +164,15 @@ def correct_resize(t, size, mode=Image.BICUBIC):
         resized_t = torchvision.transforms.functional.to_tensor(one_image) * 2 - 1.0
         resized.append(resized_t)
     return torch.stack(resized, dim=0).to(device)
+
+
+def grid_images(visuals_list, train=False):
+    image_tensors = [torch.tensor([tensor2im(visuals['real_A']) for visuals in visuals_list]).permute((0, 3, 1, 2)),
+                     torch.tensor([tensor2im(visuals['fake_B']) for visuals in visuals_list]).permute((0, 3, 1, 2)),
+                     torch.tensor([tensor2im(visuals['gt']) for visuals in visuals_list]).permute((0, 3, 1, 2))]
+    if train:
+        image_tensors.append(
+            torch.tensor([tensor2im(visuals['real_B']) for visuals in visuals_list]).permute((0, 3, 1, 2)))
+    grid_tensor = torch.cat(image_tensors, dim=0)
+    image_grid = torchvision.utils.make_grid(grid_tensor, nrow=len(visuals_list), padding=2)
+    return image_grid
