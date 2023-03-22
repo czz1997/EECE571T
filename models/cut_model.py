@@ -23,6 +23,7 @@ class CUTModel(BaseModel):
 
         parser.add_argument('--lambda_GAN', type=float, default=1.0, help='weight for GAN loss：GAN(G(X))')
         parser.add_argument('--lambda_NCE', type=float, default=1.0, help='weight for NCE loss: NCE(G(X), X)')
+        parser.add_argument('--lambda_L1', type=float, default=0.0, help='weight for L1 loss: L1(G(X), gt)')
         parser.add_argument('--nce_idt', type=util.str2bool, nargs='?', const=True, default=False, help='use NCE loss for identity mapping: NCE(G(Y), Y))')
         parser.add_argument('--nce_layers', type=str, default='0,4,8,12,16', help='compute NCE loss on which layers')
         parser.add_argument('--nce_includes_all_negatives_from_minibatch',
@@ -61,6 +62,9 @@ class CUTModel(BaseModel):
         self.loss_names = ['G', 'G_GAN', 'G_NCE', 'D', 'D_real', 'D_fake']
         self.visual_names = ['real_A', 'fake_B', 'real_B', 'gt']
         self.nce_layers = [int(i) for i in self.opt.nce_layers.split(',')]
+
+        if opt.lambda_L1 > 0:
+            self.loss_names += ['G_L1']
 
         if opt.nce_idt and self.isTrain:
             self.loss_names += ['G_NCE_Y']
@@ -102,6 +106,7 @@ class CUTModel(BaseModel):
         self.set_input(data)
         self.real_A = self.real_A[:bs_per_gpu]
         self.real_B = self.real_B[:bs_per_gpu]
+        self.gt = self.gt[:bs_per_gpu]
         self.forward()                     # compute fake images: G(A)
         if self.opt.isTrain:
             self.compute_D_loss().backward()                  # calculate gradients for D
@@ -193,7 +198,12 @@ class CUTModel(BaseModel):
         else:
             loss_G_NCE_both = self.loss_G_NCE
 
-        self.loss_G = self.loss_G_GAN + loss_G_NCE_both
+        if self.opt.lambda_L1 > 0:
+            self.loss_G_L1 = self.criterionIdt(self.fake_B, self.gt) * self.opt.lambda_L1
+        else:
+            self.loss_G_L1 = 0.0
+
+        self.loss_G = self.loss_G_GAN + loss_G_NCE_both + self.loss_G_L1
         return self.loss_G
 
     def calculate_NCE_loss(self, src, tgt):
