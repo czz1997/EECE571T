@@ -133,6 +133,10 @@ class BaseModel(ABC):
             self.forward()
             self.compute_visuals()
 
+    def get_validation_loss(self):
+        """Return validation losses / errors."""
+        pass
+
     def compute_visuals(self):
         """Calculate additional output images for visdom and HTML visualization"""
         pass

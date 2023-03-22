@@ -38,6 +38,7 @@ if __name__ == '__main__':
     optimize_time = 0.1
 
     times = []
+    best_val_losses = {}
     for epoch in range(opt.epoch_count, opt.n_epochs + opt.n_epochs_decay + 1):    # outer loop for different epochs; we save the model by <epoch_count>, <epoch_count>+<save_latest_freq>
         epoch_start_time = time.time()  # timer for entire epoch
         iter_data_time = time.time()    # timer for data loading per iteration
@@ -95,30 +96,55 @@ if __name__ == '__main__':
                time.time() - epoch_start_time, total_iters, str(time_elapsed), str(estimated_time_left)))
 
         # validate model
-        if epoch % 20 == 0:
+        if epoch > 100 and epoch % 20 == 0:
             model.eval()
 
             print("Validating model at epoch %d..." % epoch)
             eval_start_time = time.time()
 
             all_visuals = []
+            val_losses = {}
             for i, data in enumerate(val_dataset):
                 model.set_input(data)  # unpack data from data loader
                 model.test()  # run inference
                 visuals = model.get_current_visuals()  # get image results
+                loss_dict = model.get_validation_loss()
+                for k, v in loss_dict.items():
+                    if k not in val_losses:
+                        val_losses[k] = [v]
+                    else:
+                        val_losses[k].append(v)
 
                 if i % 20 == 0:
                     all_visuals.append(visuals)
 
-            image_grid = util.grid_images(all_visuals)
-            summary_writer.add_image('validation/images', image_grid, global_step=epoch)
+            print("Validation losses:", end=" ")
+            new_best = []
+            for name, loss_arr in val_losses.items():
+                loss = sum(loss_arr) / len(loss_arr)
+                summary_writer.add_scalar(f'Validation/{name}', loss, global_step=epoch)
+                print(f"{name}: {loss:.2f}", end=" ")
 
+                if name not in best_val_losses:
+                    best_val_losses[name] = loss
+                elif loss < best_val_losses[name]:
+                    best_val_losses[name] = loss
+                    new_best.append(name)
+            print()
+            if len(new_best):
+                print("New best " + ", ".join(new_best) + "!", end=" (")
+                for name, best in best_val_losses.items():
+                    print(f"{name}: {best:.2f}", end=" ")
+                    summary_writer.add_scalar(f'Validation/best_{name}', best, global_step=epoch)
+                print(")")
+            image_grid = util.grid_images(all_visuals)
+            summary_writer.add_image('Validation/images', image_grid, global_step=epoch)
             print('Validation completed in %s' % datetime.timedelta(seconds=time.time() - eval_start_time))
 
             model.train()
 
         # save model
-        if epoch % opt.save_epoch_freq == 0:              # cache our model every <save_epoch_freq> epochs
+        if epoch >= 200 and epoch % opt.save_epoch_freq == 0:   # cache our model every <save_epoch_freq> epochs
             print('Model saved at epoch %d, iters %d' % (epoch, total_iters))
             model.save_networks('latest')
             model.save_networks(epoch)

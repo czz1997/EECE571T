@@ -4,6 +4,7 @@ from .base_model import BaseModel
 from . import networks
 from .patchnce import PatchNCELoss
 import util.util as util
+from piq import MultiScaleSSIMLoss
 
 
 class CUTModel(BaseModel):
@@ -24,6 +25,7 @@ class CUTModel(BaseModel):
         parser.add_argument('--lambda_GAN', type=float, default=1.0, help='weight for GAN loss：GAN(G(X))')
         parser.add_argument('--lambda_NCE', type=float, default=1.0, help='weight for NCE loss: NCE(G(X), X)')
         parser.add_argument('--lambda_L1', type=float, default=0.0, help='weight for L1 loss: L1(G(X), gt)')
+        parser.add_argument('--lambda_SSIM', type=float, default=0.0, help='weight for SSIM loss: SSIM(G(X), gt)')
         parser.add_argument('--nce_idt', type=util.str2bool, nargs='?', const=True, default=False, help='use NCE loss for identity mapping: NCE(G(Y), Y))')
         parser.add_argument('--nce_layers', type=str, default='0,4,8,12,16', help='compute NCE loss on which layers')
         parser.add_argument('--nce_includes_all_negatives_from_minibatch',
@@ -66,6 +68,9 @@ class CUTModel(BaseModel):
         if opt.lambda_L1 > 0:
             self.loss_names += ['G_L1']
 
+        if opt.lambda_SSIM > 0:
+            self.loss_names += ['G_SSIM']
+
         if opt.nce_idt and self.isTrain:
             self.loss_names += ['G_NCE_Y']
             self.visual_names += ['idt_B']
@@ -90,6 +95,7 @@ class CUTModel(BaseModel):
                 self.criterionNCE.append(PatchNCELoss(opt).to(self.device))
 
             self.criterionIdt = torch.nn.L1Loss().to(self.device)
+            self.criterionSSIM = MultiScaleSSIMLoss(data_range=1.).to(self.device)
             self.optimizer_G = torch.optim.Adam(self.netG.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
             self.optimizer_D = torch.optim.Adam(self.netD.parameters(), lr=opt.lr, betas=(opt.beta1, opt.beta2))
             self.optimizers.append(self.optimizer_G)
@@ -203,7 +209,12 @@ class CUTModel(BaseModel):
         else:
             self.loss_G_L1 = 0.0
 
-        self.loss_G = self.loss_G_GAN + loss_G_NCE_both + self.loss_G_L1
+        if self.opt.lambda_SSIM > 0:
+            self.loss_G_SSIM = self.criterionSSIM(self.fake_B * 0.5 + 0.5, self.gt * 0.5 + 0.5) * self.opt.lambda_SSIM
+        else:
+            self.loss_G_SSIM = 0.0
+
+        self.loss_G = self.loss_G_GAN + loss_G_NCE_both + self.loss_G_L1 + self.loss_G_SSIM
         return self.loss_G
 
     def calculate_NCE_loss(self, src, tgt):
@@ -223,3 +234,12 @@ class CUTModel(BaseModel):
             total_nce_loss += loss.mean()
 
         return total_nce_loss / n_layers
+    
+    def test(self):
+        super().test()
+        with torch.no_grad():
+            self.val_L1 = self.criterionIdt(self.fake_B, self.gt)
+            self.val_SSIM = self.criterionSSIM(self.fake_B * 0.5 + 0.5, self.gt * 0.5 + 0.5)
+
+    def get_validation_loss(self):
+        return {'L1': self.val_L1, 'SSIM': self.val_SSIM}
