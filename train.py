@@ -105,7 +105,7 @@ if __name__ == '__main__':
                time.time() - epoch_start_time, total_iters, str(time_elapsed), str(estimated_time_left)))
 
         # validate model
-        if epoch > 100 and epoch % 20 == 0:
+        if epoch > 150 and epoch % 20 == 0:
             model.eval()
 
             print("Validating model at epoch %d..." % epoch)
@@ -140,18 +140,19 @@ if __name__ == '__main__':
                     new_best.append(name)
             print()
             if len(new_best):
-                print("New best " + ", ".join(new_best) + "!", end=" (")
-                for name, best in best_val_losses.items():
-                    print(f"{name}: {best:.2f}", end=" ")
-                    summary_writer.add_scalar(f'Validation/best_{name}', best, global_step=epoch)
-                print(")")
+                print("New best " + ", ".join(new_best) + "!")
+            print("Best losses:", end=" ")
+            for name, best in best_val_losses.items():
+                print(f"{name}: {best:.2f}", end=" ")
+                summary_writer.add_scalar(f'Validation/best_{name}', best, global_step=epoch)
+            print()
             image_grid = util.grid_images(all_visuals)
             summary_writer.add_image('Validation/images', image_grid, global_step=epoch)
 
             model.train()
 
         # save model
-        if epoch >= 200 and epoch % opt.save_epoch_freq == 0:   # cache our model every <save_epoch_freq> epochs
+        if epoch >= 200 and epoch % 20 == 0:   # cache our model every <save_epoch_freq> epochs
             print('Model saved at epoch %d, iters %d' % (epoch, total_iters))
             model.save_networks('latest')
             model.save_networks(epoch)

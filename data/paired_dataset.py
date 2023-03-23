@@ -68,12 +68,13 @@ class PairedDataset(BaseDataset):
             else:   # randomize the index for domain B to avoid fixed pairs.
                 B_scene_index = random.randint(0, self.size - 1)
 
-            A_image_index = random.randint(0, len(self.A_paths[index]) - 1)
-            B_image_index = 0
+            A_image_index = random.randint(0, len(self.A_paths[A_scene_index]) - 1)
+            B_image_index = random.randint(0, len(self.B_paths[B_scene_index]) - 1)
+            gt_image_index = 0
 
             A_path = os.path.join(self.dir_A, self.scenes[A_scene_index], self.A_paths[A_scene_index][A_image_index])
             B_path = os.path.join(self.dir_B, self.scenes[B_scene_index], self.B_paths[B_scene_index][B_image_index])
-            gt_path = os.path.join(self.dir_B, self.scenes[A_scene_index], self.B_paths[A_scene_index][B_image_index])
+            gt_path = os.path.join(self.dir_B, self.scenes[A_scene_index], self.B_paths[A_scene_index][gt_image_index])
         else:
             A_path = self.A_paths[index]
             B_path = os.path.join(self.dir_B, os.path.basename(os.path.dirname(A_path)), os.path.basename(A_path)[:-9] + 'C-000.png')
