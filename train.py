@@ -46,8 +46,8 @@ if __name__ == '__main__':
 
         lr = model.optimizers[0].param_groups[0]['lr']
         summary_writer.add_scalar('lr', lr, global_step=epoch)
-        print('Learning rate = %.7f' % lr)
 
+        print('[Epoch %d]' % epoch)
         train_dataset.set_epoch(epoch)
         for i, data in enumerate(train_dataset):  # inner loop within one epoch
             iter_start_time = time.time()  # timer for computation per iteration
@@ -72,7 +72,7 @@ if __name__ == '__main__':
             if total_iters % opt.display_freq == 0:
                 visuals = model.get_current_visuals()
                 image_grid = util.grid_images([visuals], train=True)
-                summary_writer.add_image('train/images', image_grid, global_step=opt.display_freq)
+                summary_writer.add_image('train/images', image_grid, global_step=total_iters)
 
             total_iters += batch_size
             epoch_iter += batch_size
