@@ -1,4 +1,5 @@
 import copy
+import math
 import os.path
 import time
 import torch
@@ -8,7 +9,15 @@ from data import create_dataset
 from models import create_model
 import datetime
 from torch.utils.tensorboard import SummaryWriter
+from tqdm import tqdm
+import random
+import numpy as np
 
+
+random.seed(123)
+np.random.seed(456)
+torch.manual_seed(789)
+torch.cuda.manual_seed(789)
 
 if __name__ == '__main__':
     opt = TrainOptions().parse()   # get training options
@@ -100,11 +109,10 @@ if __name__ == '__main__':
             model.eval()
 
             print("Validating model at epoch %d..." % epoch)
-            eval_start_time = time.time()
 
             all_visuals = []
             val_losses = {}
-            for i, data in enumerate(val_dataset):
+            for i, data in tqdm(enumerate(val_dataset), total=math.ceil(len(val_dataset) / opt_val.batch_size)):
                 model.set_input(data)  # unpack data from data loader
                 model.test()  # run inference
                 visuals = model.get_current_visuals()  # get image results
@@ -139,7 +147,6 @@ if __name__ == '__main__':
                 print(")")
             image_grid = util.grid_images(all_visuals)
             summary_writer.add_image('Validation/images', image_grid, global_step=epoch)
-            print('Validation completed in %s' % datetime.timedelta(seconds=time.time() - eval_start_time))
 
             model.train()
 
