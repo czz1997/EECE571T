@@ -131,7 +131,7 @@ if __name__ == '__main__':
             for name, loss_arr in val_losses.items():
                 loss = sum(loss_arr) / len(loss_arr)
                 summary_writer.add_scalar(f'Validation/{name}', loss, global_step=epoch)
-                print(f"{name}: {loss:.2f}", end=" ")
+                print(f"{name}: {loss:.4f}", end=" ")
 
                 if name not in best_val_losses:
                     best_val_losses[name] = loss
@@ -143,7 +143,7 @@ if __name__ == '__main__':
                 print("New best " + ", ".join(new_best) + "!")
             print("Best losses:", end=" ")
             for name, best in best_val_losses.items():
-                print(f"{name}: {best:.2f}", end=" ")
+                print(f"{name}: {best:.4f}", end=" ")
                 summary_writer.add_scalar(f'Validation/best_{name}', best, global_step=epoch)
             print()
             image_grid = util.grid_images(all_visuals)
