@@ -59,11 +59,10 @@ if __name__ == '__main__':
         print('[Epoch %d]' % epoch)
         train_dataset.set_epoch(epoch)
         for i, data in enumerate(train_dataset):  # inner loop within one epoch
-            iter_start_time = time.time()  # timer for computation per iteration
-            if total_iters % opt.print_freq == 0:
-                t_data = iter_start_time - iter_data_time
-
             batch_size = data["A"].size(0)
+            total_iters += batch_size
+            epoch_iter += batch_size
+
             if len(opt.gpu_ids) > 0:
                 torch.cuda.synchronize()
             optimize_start_time = time.time()
@@ -80,20 +79,24 @@ if __name__ == '__main__':
             # visualize training images
             if total_iters % opt.display_freq == 0:
                 visuals = model.get_current_visuals()
-                image_grid = util.grid_images([visuals], train=True)
+                image_grid = util.grid_images([visuals])
                 summary_writer.add_image('train/images', image_grid, global_step=total_iters)
 
-            total_iters += batch_size
-            epoch_iter += batch_size
-            iter_data_time = time.time()
+            # loss summary
+            if epoch_iter % opt.print_freq == 0:
+                losses = model.get_current_losses()
+                print(f"Epoch iter {epoch_iter} \t "
+                      f"epoch time: {str(datetime.timedelta(seconds=time.time() - epoch_start_time))}, "
+                      f"losses:", end=" ")
+                for name, loss in losses.items():
+                    summary_writer.add_scalar(f'Loss/{name}', loss, global_step=total_iters)
+                    print(f"{name}: {loss:.3f}", end=" ")
+                print()
 
-        # loss summary
-        losses = model.get_current_losses()
-        print("Losses:", end=" ")
-        for name, loss in losses.items():
-            summary_writer.add_scalar(f'Loss/{name}', loss, global_step=epoch)
-            print(f"{name}: {loss:.2f}", end=" ")
-        print()
+            # save model
+            if total_iters % opt.save_latest_freq == 0:
+                print('Model saved at iters %d' % total_iters)
+                model.save_networks('latest')
 
         # epoch summary
         epoch_time = time.time() - epoch_start_time
@@ -105,7 +108,7 @@ if __name__ == '__main__':
                time.time() - epoch_start_time, total_iters, str(time_elapsed), str(estimated_time_left)))
 
         # validate model
-        if epoch > 150 and epoch % 20 == 0:
+        if epoch % 1 == 0:
             model.eval()
 
             print("Validating model at epoch %d..." % epoch)
@@ -152,10 +155,9 @@ if __name__ == '__main__':
             model.train()
 
         # save model
-        if epoch >= 200 and epoch % 20 == 0:   # cache our model every <save_epoch_freq> epochs
-            print('Model saved at epoch %d, iters %d' % (epoch, total_iters))
-            model.save_networks('latest')
-            model.save_networks(epoch)
+        print('Model saved at epoch %d, iters %d' % (epoch, total_iters))
+        model.save_networks('latest')
+        model.save_networks(epoch)
 
         model.update_learning_rate()  # update learning rates at the end of every epoch.
         print()

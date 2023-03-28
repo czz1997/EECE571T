@@ -62,7 +62,7 @@ class CUTModel(BaseModel):
         # specify the training losses you want to print out.
         # The training/test scripts will call <BaseModel.get_current_losses>
         self.loss_names = ['G', 'G_GAN', 'G_NCE', 'D', 'D_real', 'D_fake']
-        self.visual_names = ['real_A', 'fake_B', 'real_B', 'gt']
+        self.visual_names = ['real_A', 'fake_B', 'real_B']
         self.nce_layers = [int(i) for i in self.opt.nce_layers.split(',')]
 
         if opt.lambda_L1 > 0:
@@ -112,7 +112,6 @@ class CUTModel(BaseModel):
         self.set_input(data)
         self.real_A = self.real_A[:bs_per_gpu]
         self.real_B = self.real_B[:bs_per_gpu]
-        self.gt = self.gt[:bs_per_gpu]
         self.forward()                     # compute fake images: G(A)
         if self.opt.isTrain:
             self.compute_D_loss().backward()                  # calculate gradients for D
@@ -152,7 +151,6 @@ class CUTModel(BaseModel):
         AtoB = self.opt.direction == 'AtoB'
         self.real_A = input['A' if AtoB else 'B'].to(self.device)
         self.real_B = input['B' if AtoB else 'A'].to(self.device)
-        self.gt = input['gt'].to(self.device)
         self.image_paths = input['A_paths' if AtoB else 'B_paths']
 
     def forward(self):
@@ -205,12 +203,12 @@ class CUTModel(BaseModel):
             loss_G_NCE_both = self.loss_G_NCE
 
         if self.opt.lambda_L1 > 0:
-            self.loss_G_L1 = self.criterionIdt(self.fake_B, self.gt) * self.opt.lambda_L1
+            self.loss_G_L1 = self.criterionIdt(self.fake_B, self.real_B) * self.opt.lambda_L1
         else:
             self.loss_G_L1 = 0.0
 
         if self.opt.lambda_SSIM > 0:
-            self.loss_G_SSIM = self.criterionSSIM(self.fake_B * 0.5 + 0.5, self.gt * 0.5 + 0.5) * self.opt.lambda_SSIM
+            self.loss_G_SSIM = self.criterionSSIM(self.fake_B * 0.5 + 0.5, self.real_B * 0.5 + 0.5) * self.opt.lambda_SSIM
         else:
             self.loss_G_SSIM = 0.0
 
@@ -238,8 +236,8 @@ class CUTModel(BaseModel):
     def test(self):
         super().test()
         with torch.no_grad():
-            self.val_L1 = self.criterionIdt(self.fake_B, self.gt)
-            self.val_SSIM = self.criterionSSIM(self.fake_B * 0.5 + 0.5, self.gt * 0.5 + 0.5)
+            self.val_L1 = self.criterionIdt(self.fake_B, self.real_B)
+            self.val_SSIM = self.criterionSSIM(self.fake_B * 0.5 + 0.5, self.real_B * 0.5 + 0.5)
 
     def get_validation_loss(self):
         return {'L1': self.val_L1, 'SSIM': self.val_SSIM}
