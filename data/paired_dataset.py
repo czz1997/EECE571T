@@ -32,13 +32,20 @@ class PairedDataset(BaseDataset):
         self.scenes = sorted([scene for scene in os.listdir(self.dir_A)
                               if os.path.isdir(os.path.join(self.dir_A, scene))])
 
-        self.A_paths, self.B_paths = [], []
-        for scene in self.scenes:
-            for f in os.listdir(os.path.join(self.dir_A, scene)):
-                self.A_paths.append(os.path.join(self.dir_A, scene, f))
-            for f in os.listdir(os.path.join(self.dir_B, scene)):
-                self.B_paths.append(os.path.join(self.dir_B, scene, f))
-        self.size = len(self.A_paths)  # size of dataset is #images in A in val and test
+        if self.phase == 'train':
+            self.A_paths = sorted([os.listdir(os.path.join(self.dir_A, scene)) for scene in self.scenes]
+                                  [:min(opt.max_dataset_size, len(self.scenes))])
+            self.B_paths = sorted([os.listdir(os.path.join(self.dir_B, scene)) for scene in self.scenes]
+                                  [:min(opt.max_dataset_size, len(self.scenes))])
+            self.size = len(self.scenes)  # size of dataset is number of scenes in training
+        else:
+            self.A_paths, self.B_paths = [], []
+            for scene in self.scenes:
+                for f in os.listdir(os.path.join(self.dir_A, scene)):
+                    self.A_paths.append(os.path.join(self.dir_A, scene, f))
+                for f in os.listdir(os.path.join(self.dir_B, scene)):
+                    self.B_paths.append(os.path.join(self.dir_B, scene, f))
+            self.size = len(self.A_paths)  # size of dataset is #images in A in val and test
 
     def __getitem__(self, index):
         """Return a data point and its metadata information.
@@ -52,9 +59,18 @@ class PairedDataset(BaseDataset):
             A_paths (str)    -- image paths
             B_paths (str)    -- image paths
         """
-        A_path = self.A_paths[index]
-        B_path = os.path.join(self.dir_B, os.path.basename(os.path.dirname(A_path)), os.path.basename(A_path)[:-9] + 'C-000.png')
-        assert B_path in self.B_paths
+        if self.phase == 'train':
+            scene_index = index
+
+            A_image_index = random.randint(0, len(self.A_paths[scene_index]) - 1)
+            B_image_index = 0
+
+            A_path = os.path.join(self.dir_A, self.scenes[scene_index], self.A_paths[scene_index][A_image_index])
+            B_path = os.path.join(self.dir_B, self.scenes[scene_index], self.B_paths[scene_index][B_image_index])
+        else:
+            A_path = self.A_paths[index]
+            B_path = os.path.join(self.dir_B, os.path.basename(os.path.dirname(A_path)), os.path.basename(A_path)[:-9] + 'C-000.png')
+            assert B_path in self.B_paths
 
         A_img = Image.open(A_path).convert('RGB')
         B_img = Image.open(B_path).convert('RGB')
