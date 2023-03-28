@@ -41,9 +41,9 @@ class PairedDataset(BaseDataset):
         else:
             self.A_paths, self.B_paths = [], []
             for scene in self.scenes:
-                for f in os.listdir(os.path.join(self.dir_A, scene)):
+                for f in sorted(os.listdir(os.path.join(self.dir_A, scene))):
                     self.A_paths.append(os.path.join(self.dir_A, scene, f))
-                for f in os.listdir(os.path.join(self.dir_B, scene)):
+                for f in sorted(os.listdir(os.path.join(self.dir_B, scene))):
                     self.B_paths.append(os.path.join(self.dir_B, scene, f))
             self.size = len(self.A_paths)  # size of dataset is #images in A in val and test
 

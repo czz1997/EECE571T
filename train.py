@@ -105,7 +105,7 @@ if __name__ == '__main__':
                time.time() - epoch_start_time, total_iters, str(time_elapsed), str(estimated_time_left)))
 
         # validate model
-        if epoch > 150 and epoch % 20 == 0:
+        if epoch > 200 and epoch % 40 == 0:
             model.eval()
 
             print("Validating model at epoch %d..." % epoch)
@@ -152,7 +152,7 @@ if __name__ == '__main__':
             model.train()
 
         # save model
-        if epoch >= 200 and epoch % 20 == 0:   # cache our model every <save_epoch_freq> epochs
+        if epoch >= 200 and epoch % 40 == 0:   # cache our model every <save_epoch_freq> epochs
             print('Model saved at epoch %d, iters %d' % (epoch, total_iters))
             model.save_networks('latest')
             model.save_networks(epoch)
