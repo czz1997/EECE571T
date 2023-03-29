@@ -64,6 +64,9 @@ if __name__ == '__main__':
         model.set_input(data)  # unpack data from data loader
         model.test()           # run inference
         visuals = model.get_current_visuals()  # get image results
+        del visuals['real_A']
+        del visuals['real_B']
+        del visuals['gt']
         loss_dict = model.get_validation_loss()
         for name, loss in loss_dict.items():
             if name not in val_losses:
