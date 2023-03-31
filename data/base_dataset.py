@@ -241,9 +241,9 @@ class ColorAugmenter:
         self.use_color_jitter = use_color_jitter
 
         # probs
-        self.adjust_gamma_prob = 0.2
-        self.color_jitter_prob = 0.2
-        self.colorjitter_op = transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2)
+        self.adjust_gamma_prob = 0.33
+        self.color_jitter_prob = 0.33
+        self.colorjitter_op = transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.3)
 
     def get_transforms(self):
         transform_list = []

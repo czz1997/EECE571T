@@ -93,7 +93,7 @@ class PairedDataset(BaseDataset):
             torch.zeros(A_img.size[0], self.opt.load_size, self.opt.load_size),
             output_size=(self.opt.crop_size, self.opt.crop_size))
         flip = random.random() > 0.5
-        scale_factor = np.random.uniform(0.9, 1.1, size=[2])
+        scale_factor = np.random.uniform(0.85, 1.15, size=[2])
         # For CUT/FastCUT mode, if in finetuning phase (learning rate is decaying),
         # do not perform resize-crop data augmentation of CycleGAN.
         is_finetuning = self.opt.isTrain and self.current_epoch > self.opt.n_epochs
