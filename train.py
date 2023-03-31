@@ -32,6 +32,7 @@ if __name__ == '__main__':
     opt_val.load_size = opt_val.crop_size
     opt_val.serial_batches = True  # disable data shuffling
     opt_val.no_flip = True  # no flip; comment this line if results on flipped images are needed.
+    opt_val.preprocess = 'resize_and_crop'
     val_dataset = create_dataset(opt_val)
     val_dataset_size = len(val_dataset)
 

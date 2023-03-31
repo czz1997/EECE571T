@@ -5,6 +5,7 @@ from PIL import Image
 import random
 import util.util as util
 from torchvision import transforms
+import numpy as np
 
 
 class PairedDataset(BaseDataset):
@@ -63,9 +64,9 @@ class PairedDataset(BaseDataset):
         """
         if self.phase == 'train':
             A_scene_index = index
-            if self.opt.serial_batches:   # make sure index is within then range
+            if self.opt.serial_batches:  # make sure index is within then range
                 B_scene_index = (self.size // 2 + index) % self.size
-            else:   # randomize the index for domain B to avoid fixed pairs.
+            else:  # randomize the index for domain B to avoid fixed pairs.
                 B_scene_index = random.randint(0, self.size - 1)
 
             A_image_index = random.randint(0, len(self.A_paths[A_scene_index]) - 1)
@@ -77,7 +78,8 @@ class PairedDataset(BaseDataset):
             gt_path = os.path.join(self.dir_B, self.scenes[A_scene_index], self.B_paths[A_scene_index][gt_image_index])
         else:
             A_path = self.A_paths[index]
-            B_path = os.path.join(self.dir_B, os.path.basename(os.path.dirname(A_path)), os.path.basename(A_path)[:-9] + 'C-000.png')
+            B_path = os.path.join(self.dir_B, os.path.basename(os.path.dirname(A_path)),
+                                  os.path.basename(A_path)[:-9] + 'C-000.png')
             gt_path = B_path
             assert B_path in self.B_paths
 
@@ -86,16 +88,18 @@ class PairedDataset(BaseDataset):
         gt_img = Image.open(gt_path).convert('RGB')
 
         # Apply image transformation
-        # For paired images, we use the same randomness for random crop and random horizontal flip transforms
+        # For paired images, we use the same randomness for random crop, horizontal flip, zoom transforms
         i, j, _, _ = transforms.RandomCrop.get_params(
             torch.zeros(A_img.size[0], self.opt.load_size, self.opt.load_size),
             output_size=(self.opt.crop_size, self.opt.crop_size))
         flip = random.random() > 0.5
+        scale_factor = np.random.uniform(0.9, 1.1, size=[2])
         # For CUT/FastCUT mode, if in finetuning phase (learning rate is decaying),
         # do not perform resize-crop data augmentation of CycleGAN.
         is_finetuning = self.opt.isTrain and self.current_epoch > self.opt.n_epochs
         modified_opt = util.copyconf(self.opt, load_size=self.opt.crop_size if is_finetuning else self.opt.load_size)
-        transform = get_transform(modified_opt, params={'crop_pos': (i, j), 'flip': flip})
+        transform = get_transform(modified_opt, colorjitter=self.phase == 'train',
+                                  params={'crop_pos': (i, j), 'flip': flip, 'scale_factor': scale_factor})
         A = transform(A_img)
         B = transform(B_img)
         gt = transform(gt_img)

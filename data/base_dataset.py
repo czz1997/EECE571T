@@ -8,6 +8,7 @@ import torch.utils.data as data
 from PIL import Image
 import torchvision.transforms as transforms
 from abc import ABC, abstractmethod
+import torchvision.transforms.functional as F
 
 
 class BaseDataset(data.Dataset, ABC):
@@ -79,10 +80,13 @@ def get_params(opt, size):
     return {'crop_pos': (x, y), 'flip': flip}
 
 
-def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, convert=True):
+def get_transform(opt, params=None, grayscale=False, colorjitter=False, method=Image.BICUBIC, convert=True):
     transform_list = []
     if grayscale:
         transform_list.append(transforms.Grayscale(1))
+    if colorjitter:
+        colorAug = ColorAugmenter()
+        transform_list += colorAug.get_transforms()
     if 'fixsize' in opt.preprocess:
         transform_list.append(transforms.Resize(params["size"], method))
     if 'resize' in opt.preprocess:
@@ -228,3 +232,47 @@ def __print_size_warning(ow, oh, w, h):
               "(%d, %d). This adjustment will be done to all images "
               "whose sizes are not multiples of 4" % (ow, oh, w, h))
         __print_size_warning.has_printed = True
+
+
+class ColorAugmenter:
+    def __init__(self, use_gamma=True, use_color_jitter=True):
+        # settings
+        self.use_gamma = use_gamma
+        self.use_color_jitter = use_color_jitter
+
+        # probs
+        self.adjust_gamma_prob = 0.2
+        self.color_jitter_prob = 0.2
+        self.colorjitter_op = transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.2)
+
+    def get_transforms(self):
+        transform_list = []
+
+        if self.use_gamma and random.random() < self.adjust_gamma_prob:
+            gamma = np.random.uniform(0.8, 1.2, 1)
+            transform_list.append(transforms.Lambda(lambda img: F.adjust_gamma(img, gamma)))
+
+        if self.use_color_jitter:
+            fn_idx, brightness_factor, contrast_factor, saturation_factor, hue_factor = transforms.ColorJitter.get_params(
+                self.colorjitter_op.brightness,
+                self.colorjitter_op.contrast,
+                self.colorjitter_op.saturation,
+                self.colorjitter_op.hue)
+
+            for fn_id in fn_idx:
+                if fn_id == 0 and brightness_factor is not None:
+                    if random.random() < self.color_jitter_prob:
+                        transform_list.append(
+                            transforms.Lambda(lambda img: F.adjust_brightness(img, brightness_factor)))
+                elif fn_id == 1 and contrast_factor is not None:
+                    if random.random() < self.color_jitter_prob:
+                        transform_list.append(transforms.Lambda(lambda img: F.adjust_contrast(img, contrast_factor)))
+                elif fn_id == 2 and saturation_factor is not None:
+                    if random.random() < self.color_jitter_prob:
+                        transform_list.append(
+                            transforms.Lambda(lambda img: F.adjust_saturation(img, saturation_factor)))
+                elif fn_id == 3 and hue_factor is not None:
+                    if random.random() < self.color_jitter_prob:
+                        transform_list.append(transforms.Lambda(lambda img: F.adjust_hue(img, hue_factor)))
+
+        return transform_list
